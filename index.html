@@ -42,14 +42,14 @@
 
       function wrapCode(code) {
         return `precision mediump float;
-      uniform vec3 iResolution;
-      uniform float iTime;
-      ${code}
-      void main() {
-        vec4 fragColor;
-        mainImage(fragColor, gl_FragCoord.xy);
-        gl_FragColor = vec4(fragColor.xyz, 1.0);
-      }`;
+uniform vec3 iResolution;
+uniform float iTime;
+${code}
+void main() {
+  vec4 fragColor;
+  mainImage(fragColor, gl_FragCoord.xy);
+  gl_FragColor = vec4(fragColor.xyz, 1.0);
+}`;
       }
 
       const editor = CodeMirror(editorElement, {
@@ -69,15 +69,8 @@
     wave
   );
 
-  // Output the final color
-  // fragColor = vec4(color, 1.0);
-if (uv.x > 1000000.5) {
-    fragColor = vec4(1.0, 0.0, 0.0, 1.0); // Red color for debugging
-} else {
-    fragColor = vec4(color, 1.0);
-}
+  fragColor = vec4(color, 1.0); // Output the final color
 }`,
-        // value: "",
         mode: "x-shader/x-fragment",
         theme: "material",
         lineNumbers: true,
