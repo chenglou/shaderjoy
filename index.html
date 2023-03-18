@@ -21,6 +21,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/theme/material.min.css" />
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/clike/clike.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/keymap/vim.min.js"></script>
   </head>
   <body>
     <canvas id="glCanvas"></canvas>
@@ -68,6 +69,7 @@
         theme: "material",
         lineNumbers: true,
         lineWrapping: true,
+        keyMap: "vim",
       })
       let editorChanged = true
       let program, aPosition, uRes, uTime
