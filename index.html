@@ -28,23 +28,23 @@
     <script>
       "use strict"
 
-      const canvas = document.getElementById("glCanvas")
-      const gl = canvas.getContext("webgl")
+      // === generic scheduler & its debugger
+      let scheduledRender = false
+      function scheduleRender(debugForceRender) {
+        if (scheduledRender) return
+        scheduledRender = true
 
-      const editorElement = document.getElementById("editor")
-
-      function wrapCode(code) {
-        return `precision mediump float;
-uniform vec3 iResolution;
-uniform float iTime;
-${code}
-void main() {
-  vec4 fragColor;
-  mainImage(fragColor, gl_FragCoord.xy);
-  gl_FragColor = vec4(fragColor.xyz, 1.0);
-}`
+        requestAnimationFrame(function renderAndMaybeScheduleAnotherRender(now) {
+          // eye-grabbing name. No "(anonymous)" function in the debugger & profiler
+          scheduledRender = false
+          if (render(now)) scheduleRender()
+        })
       }
 
+      // === state
+      const canvas = document.getElementById("glCanvas")
+      const gl = canvas.getContext("webgl")
+      const editorElement = document.getElementById("editor")
       const editor = CodeMirror(editorElement, {
         value: `void mainImage(out vec4 fragColor, in vec2 fragCoord) {
   // Normalize the coordinates to the range of [0, 1]
@@ -69,30 +69,47 @@ void main() {
         lineNumbers: true,
         lineWrapping: true,
       })
-
+      let editorChanged = true
       let program, aPosition, uRes, uTime
 
-      const createShader = (type, code) => {
-        const shader = gl.createShader(type)
-        gl.shaderSource(shader, code)
-        gl.compileShader(shader)
-        return gl.getShaderParameter(shader, gl.COMPILE_STATUS) ? shader : console.log(gl.getShaderInfoLog(shader))
-      }
+      function initShaderProgram(fragmentShaderCode) {
+        function createShader(type, code) {
+          const shader = gl.createShader(type)
+          gl.shaderSource(shader, code)
+          gl.compileShader(shader)
+          return gl.getShaderParameter(shader, gl.COMPILE_STATUS) ? shader : console.log(gl.getShaderInfoLog(shader))
+        }
 
-      const initShaderProgram = (fragmentShaderCode) => {
         if (program) gl.deleteProgram(program)
         program = gl.createProgram()
+        // dummy vertex shader
         gl.attachShader(
           program,
-          createShader(gl.VERTEX_SHADER, `attribute vec4 a_position; void main() {gl_Position = a_position;}`) // dummy vertex shader
+          createShader(gl.VERTEX_SHADER, `attribute vec4 a_position; void main() {gl_Position = a_position;}`)
         )
-        gl.attachShader(program, createShader(gl.FRAGMENT_SHADER, wrapCode(fragmentShaderCode)))
+        // wrapped fragment shader
+        gl.attachShader(
+          program,
+          createShader(
+            gl.FRAGMENT_SHADER,
+            `precision mediump float;
+uniform vec3 iResolution;
+uniform float iTime;
+${fragmentShaderCode}
+void main() {
+  vec4 fragColor;
+  mainImage(fragColor, gl_FragCoord.xy);
+  gl_FragColor = vec4(fragColor.xyz, 1.0);
+}`
+          )
+        )
+
         gl.linkProgram(program)
         gl.useProgram(program)
-        gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer())
+        gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer()) // set up the dummy vertex shader's buffer
         gl.bufferData(
-          gl.ARRAY_BUFFER, // set up the dummy vertex shader buffer
-          new Float32Array([-1, 1, 1, 1, -1, -1, 1, -1]), // 4 vertices (2 components each)
+          gl.ARRAY_BUFFER,
+          new Float32Array([-1, 1, 1, 1, -1, -1, 1, -1]), // 4 vertices (4 times x,y)
           gl.STATIC_DRAW // we don't update the vertices after creating the buffer (we do destroy the program per keystroke though, but not per rAF)
         )
         aPosition = gl.getAttribLocation(program, "a_position")
@@ -100,7 +117,7 @@ void main() {
           aPosition,
           2, // 2 components per attribute
           gl.FLOAT,
-          false, // don't normalize the data. Aka, don't convert from whatever range to 0-1
+          false, // don't normalize the data. Aka, don't convert from whatever range to 0-1. Irrelevant for us
           0, // stride
           0 // offset
         )
@@ -112,31 +129,37 @@ void main() {
         gl.uniform3f(uRes, canvas.width, canvas.height, 1.0)
       }
 
-      const resize = () => {
-        canvas.width = window.innerWidth
-        canvas.height = window.innerHeight
-        gl.viewport(0, 0, canvas.width, canvas.height)
-        gl.uniform3f(uRes, canvas.width, canvas.height, 1.0)
-      }
-      window.addEventListener("resize", resize)
-      resize()
-
-      const render = (t) => {
-        gl.uniform1f(uTime, t * 0.001)
-        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
-        requestAnimationFrame(render)
-      }
-
+      // === events
+      window.addEventListener("resize", () => scheduleRender())
       editor.on("change", () => {
-        try {
-          initShaderProgram(editor.getValue())
-        } catch (e) {
-          console.error(e)
-        }
+        editorChanged = true
+        scheduleRender()
       })
 
-      initShaderProgram(editor.getValue())
-      requestAnimationFrame(render)
+      function render(now) {
+        // === step 1: batched DOM reads (to avoid accidental DOM read & write interleaving)
+        const windowSizeX = document.documentElement.clientWidth // excludes scroll bar & invariant under safari pinch zoom
+        const windowSizeY = document.documentElement.clientHeight // same
+        const editorValue = editor.getValue()
+
+        let stillAnimating = true
+
+        // === step 5: render. Batch DOM writes
+        canvas.width = windowSizeX
+        canvas.height = windowSizeY
+        gl.uniform1f(uTime, now * 0.001)
+        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
+        gl.viewport(0, 0, windowSizeX, windowSizeY) // needs to come after canvas width/height change, otherwise flash
+        gl.uniform3f(uRes, windowSizeX, windowSizeY, 1.0)
+        if (editorChanged) initShaderProgram(editorValue)
+
+        // === step 6: update state & prepare for next frame
+        editorChanged = false
+
+        return stillAnimating
+      }
+
+      scheduleRender()
     </script>
   </body>
 </html>
