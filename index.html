@@ -147,10 +147,10 @@ void main() {
         // === step 5: render. Batch DOM writes
         canvas.width = windowSizeX
         canvas.height = windowSizeY
-        gl.uniform1f(uTime, now * 0.001)
-        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
         gl.viewport(0, 0, windowSizeX, windowSizeY) // needs to come after canvas width/height change, otherwise flash
         gl.uniform3f(uRes, windowSizeX, windowSizeY, 1.0)
+        gl.uniform1f(uTime, now * 0.001)
+        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
         if (editorChanged) initShaderProgram(editorValue)
 
         // === step 6: update state & prepare for next frame
