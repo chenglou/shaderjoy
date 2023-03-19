@@ -1,22 +1,26 @@
-"use strict"
-
 // === generic scheduler & its debugger
+const debug = false // toggle this for manually stepping through animation frames (press key A)
+let debugTimestamp = 0
 let scheduledRender = false
-function scheduleRender(debugForceRender) {
-  if (scheduledRender) return
+function scheduleRender(debugForceRender = false) {
+  if (debug && !debugForceRender) return
+  if (scheduledRender) return;
   scheduledRender = true
 
-  requestAnimationFrame(function renderAndMaybeScheduleAnotherRender(now) {
-    // eye-grabbing name. No "(anonymous)" function in the debugger & profiler
+  requestAnimationFrame(function renderAndMaybeScheduleAnotherRender(now) { // eye-grabbing name. No "(anonymous)" function in the debugger & profiler
     scheduledRender = false
-    if (render(now)) scheduleRender()
+    debugTimestamp += 1000 / 60
+    if (render(debug ? debugTimestamp : now)) scheduleRender()
   })
 }
 
 // === state
-const canvas = document.getElementById("glCanvas")
-const gl = canvas.getContext("webgl")
-const editor = document.getElementById("editor")
+const canvas = document.createElement('canvas')
+const editor = document.createElement('div')
+editor.id = "editor"
+const gl = canvas.getContext("webgl")!
+document.body.append(canvas, editor)
+// @ts-ignore
 const codeMirror = CodeMirror(editor, {
   value: `void mainImage( out vec4 fragColor, in vec2 fragCoord ) {
   vec2 uv = (2.*fragCoord.xy - iResolution.xy) / iResolution.y;
@@ -36,19 +40,24 @@ const codeMirror = CodeMirror(editor, {
   lineWrapping: true,
   keyMap: "vim",
 })
-let editorChanged = true
-let program, aPosition, uRes, uTime, uMouse
 
-function initShaderProgram(fragmentShaderCode) {
+let editorChanged = true
+let program: WebGLProgram | null
+let aPosition: number
+let uRes: WebGLUniformLocation | null
+let uTime: WebGLUniformLocation | null
+let uMouse: WebGLUniformLocation | null
+
+function initShaderProgram(fragmentShaderCode: string) {
   if (program) gl.deleteProgram(program)
-  program = gl.createProgram()
+  program = gl.createProgram()!
   // TODO: get all error info: getShaderParameter, getShaderInfoLog, etc.
-  const dummyVertexShader = gl.createShader(gl.VERTEX_SHADER)
+  const dummyVertexShader = gl.createShader(gl.VERTEX_SHADER)!
   gl.shaderSource(dummyVertexShader, "attribute vec4 a_position; void main() {gl_Position = a_position;}")
   gl.compileShader(dummyVertexShader)
   gl.attachShader(program, dummyVertexShader)
 
-  const fragmentShader = gl.createShader(gl.FRAGMENT_SHADER)
+  const fragmentShader = gl.createShader(gl.FRAGMENT_SHADER)!
   gl.shaderSource(
     fragmentShader,
     `precision mediump float;
@@ -98,7 +107,7 @@ codeMirror.on("change", () => {
   scheduleRender()
 })
 
-function render(now) {
+function render(now: number) {
   // === step 1: batched DOM reads (to avoid accidental DOM read & write interleaving)
   const windowSizeX = document.documentElement.clientWidth // excludes scroll bar & invariant under safari pinch zoom
   const windowSizeY = document.documentElement.clientHeight // same
@@ -108,12 +117,9 @@ function render(now) {
   let stillAnimating = true
 
   // === step 5: render. Batch DOM writes
-  let editorSizeX = 640
-  let editorSizeY = 500
-  let canvasSizeX = 640
-  let canvasSizeY = 360
-  let canvasRetinaSizeX = canvasSizeX * devicePixelRatio
-  let canvasRetinaSizeY = canvasSizeY * devicePixelRatio
+  let editorSizeX = 640, editorSizeY = 500
+  let canvasSizeX = 640, canvasSizeY = 360
+  let canvasRetinaSizeX = canvasSizeX * devicePixelRatio, canvasRetinaSizeY = canvasSizeY * devicePixelRatio
 
   editor.style.width = `${editorSizeX}px`
   editor.style.top = `${canvasSizeY}px`
