@@ -141,6 +141,7 @@ void main() {
         // === step 1: batched DOM reads (to avoid accidental DOM read & write interleaving)
         const windowSizeX = document.documentElement.clientWidth // excludes scroll bar & invariant under safari pinch zoom
         const windowSizeY = document.documentElement.clientHeight // same
+        const devicePixelRatio = window.devicePixelRatio
         const editorValue = codeMirror.getValue()
 
         let stillAnimating = true
@@ -150,13 +151,18 @@ void main() {
         let editorSizeY = 500
         let canvasSizeX = 600
         let canvasSizeY = 300
+        let canvasRetinaSizeX = canvasSizeX * devicePixelRatio
+        let canvasRetinaSizeY = canvasSizeY * devicePixelRatio
+
         editor.style.width = `${editorSizeX}px`
-        canvas.width = canvasSizeX
-        canvas.height = canvasSizeY
         editor.style.top = `${canvasSizeY}px`
-        gl.viewport(0, 0, canvasSizeX, canvasSizeY) // needs to come after canvas width/height change, otherwise flash
+        canvas.style.width = `${canvasSizeX}px`
+        canvas.style.height = `${canvasSizeY}px`
+        canvas.width = canvasRetinaSizeX // different than canvas.style.width. Btw this clears the canvas as well
+        canvas.height = canvasRetinaSizeY
+        gl.viewport(0, 0, canvasRetinaSizeX, canvasRetinaSizeY) // needs to come after canvas width/height change, otherwise flash
         // pass in shader variable values
-        gl.uniform3f(uRes, canvasSizeX, canvasSizeY, 1.0)
+        gl.uniform3f(uRes, canvasRetinaSizeX, canvasRetinaSizeY, 1.0)
         gl.uniform1f(uTime, now * 0.001)
         gl.uniform4f(uMouse, 0, 0, 0, 0)
         gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
