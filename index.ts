@@ -14,25 +14,8 @@ function scheduleRender(debugForceRender = false) {
   })
 }
 
-// === state
-let editors: {
-  canvasNode: HTMLCanvasElement, editorNode: HTMLDivElement,
-  codeMirror: any,
-  errorMarks: any[],
-  gl: WebGLRenderingContext,
-  changed: boolean,
-  program: WebGLProgram,
-  fragmentShader: WebGLShader,
-  uRes: WebGLUniformLocation | null, uTime: WebGLUniformLocation | null, uMouse: WebGLUniformLocation | null,
-}[] = []
-for (let i = 0; i < 4; i++) {
-  const canvasNode = document.createElement('canvas')
-  const editorNode = document.createElement('div')
-  editorNode.className = "editor"
-  document.body.append(canvasNode, editorNode)
-  // @ts-ignore
-  const codeMirror = CodeMirror(editorNode, { // needs to come after append
-    value: `void mainImage( out vec4 fragColor, in vec2 fragCoord ) {
+// === constants
+const defaultCode = `void mainImage( out vec4 fragColor, in vec2 fragCoord ) {
   vec2 uv = (2.*fragCoord.xy - iResolution.xy) / iResolution.y;
 
   float dist = length(uv) - .5;
@@ -43,7 +26,31 @@ for (let i = 0; i < 4; i++) {
   bg = max(dist - s, e - dist);
 
   fragColor = dot(clamp(bg * iResolution.y, 0., 1.), 72. * (s - e)) * (s - .1) + bg;
-}`,
+}`
+
+// === state
+let codes_ = localStorage.getItem(`codes`)
+let codes = codes_ ? JSON.parse(codes_) : []
+for (let i = codes.length; i < 8; i++) codes.push(defaultCode) // fill codes with defaultCode til it has 8 elements
+
+let editors: {
+  canvasNode: HTMLCanvasElement, editorNode: HTMLDivElement,
+  codeMirror: any,
+  errorMarks: any[],
+  gl: WebGLRenderingContext,
+  changed: boolean,
+  program: WebGLProgram,
+  fragmentShader: WebGLShader,
+  uRes: WebGLUniformLocation | null, uTime: WebGLUniformLocation | null, uMouse: WebGLUniformLocation | null,
+}[] = []
+for (let i = 0; i < codes.length; i++) {
+  const canvasNode = document.createElement('canvas')
+  const editorNode = document.createElement('div')
+  editorNode.className = "editor"
+  document.body.append(canvasNode, editorNode)
+  // @ts-ignore
+  const codeMirror = CodeMirror(editorNode, { // needs to come after append
+    value: codes[i],
     mode: "x-shader/x-fragment",
     theme: "material",
     lineNumbers: true,
@@ -101,8 +108,8 @@ function render(now: number) {
 
   // === step 5: render. Batch DOM writes
   let playgroundGap = 12
-  let editorSizeX = 640
-  let canvasSizeX = editorSizeX, canvasSizeY = 360
+  let editorSizeX = 600
+  let canvasSizeX = editorSizeX, canvasSizeY = editorSizeX / 2
   let canvasRetinaSizeX = canvasSizeX * devicePixelRatio, canvasRetinaSizeY = canvasSizeY * devicePixelRatio
 
   let left = playgroundGap
@@ -128,10 +135,11 @@ function render(now: number) {
       editor.errorMarks = [] // TODO: no double assign
 
       let newFragmentShader = gl.createShader(gl.FRAGMENT_SHADER)!
+      const newCode = codeMirror.getValue()
       gl.shaderSource(
         newFragmentShader,
         `precision mediump float; uniform vec3 iResolution; uniform float iTime; uniform vec4 iMouse;
-${codeMirror.getValue()}
+${newCode}
 void main() {
   vec4 fragColor;
   mainImage(fragColor, gl_FragCoord.xy);
@@ -215,6 +223,11 @@ void main() {
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
 
     left += editorSizeX + 20 // gap
+  }
+
+  if (editors.some(e => e.changed)) {
+    let newCodes = editors.map(e => e.codeMirror.getValue())
+    localStorage.setItem("codes", JSON.stringify(newCodes))
   }
 
   // === step 6: update state & prepare for next frame
