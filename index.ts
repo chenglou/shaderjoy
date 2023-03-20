@@ -18,6 +18,7 @@ function scheduleRender(debugForceRender = false) {
 let editors: {
   canvasNode: HTMLCanvasElement, editorNode: HTMLDivElement,
   codeMirror: any,
+  errorMarks: any[],
   gl: WebGLRenderingContext,
   changed: boolean,
   program: WebGLProgram,
@@ -72,6 +73,7 @@ void main() {
   let editor = {
     canvasNode, editorNode,
     codeMirror,
+    errorMarks: [],
     gl,
     changed: true,
     program,
@@ -121,6 +123,10 @@ function render(now: number) {
     editorNode.style.left = `${left}px`
 
     if (changed) {
+      // Clear previous error highlights
+      editor.errorMarks.forEach(clear => clear())
+      editor.errorMarks = [] // TODO: no double assign
+
       let newFragmentShader = gl.createShader(gl.FRAGMENT_SHADER)!
       gl.shaderSource(
         newFragmentShader,
@@ -134,12 +140,43 @@ void main() {
       gl.compileShader(newFragmentShader)
       if (!gl.getShaderParameter(newFragmentShader, gl.COMPILE_STATUS)) { // TODO: get all other errors (e.g. link errors)
         let errors = gl.getShaderInfoLog(newFragmentShader)!
-        const errorRegex = /ERROR: (\d+):(\d+): (.+)/g // e.g. "ERROR: 0:14: '{' : syntax error\nERROR: 1:13 ..."
-        let parsed = [...errors.matchAll(errorRegex)].map(([, row, col, message]) => {
-          return ({
-            row: parseInt(row),
-            col: parseInt(col),
-            message
+        const errorRegex = /ERROR: \d+:(\d+): (.+)/g // e.g. "ERROR: 0:14: '{' : syntax error\nERROR: 1:13 ..."
+        editor.errorMarks = [...errors.matchAll(errorRegex)].map(([, line, message]) => {
+          const processedLine = parseInt(line) - 2 // -1 for codemirror's 0-indexing, -1 for the first line of the shader
+
+          const tooltip = document.createElement("div")
+          tooltip.className = "error-tooltip"
+          tooltip.textContent = message
+          tooltip.style.display = "none"
+          document.body.appendChild(tooltip)
+
+          const mark = document.createElement("div")
+          mark.innerText = '!!'
+          codeMirror.setGutterMarker(
+            processedLine,
+            "CodeMirror-linenumbers",
+            mark
+          )
+
+          const onMouseOver = (e) => {
+            const rect = e.target.getBoundingClientRect()
+            tooltip.style.left = `${rect.right + 10}px`
+            tooltip.style.top = `${rect.top}px`
+            tooltip.style.display = "block"
+          }
+
+          const onMouseOut = () => {
+            tooltip.style.display = "none"
+          }
+
+          mark.addEventListener("mouseover", onMouseOver)
+          mark.addEventListener("mouseout", onMouseOut)
+
+          return (() => {
+            codeMirror.clearGutter("CodeMirror-linenumbers")
+            mark.removeEventListener("mouseover", onMouseOver)
+            mark.removeEventListener("mouseout", onMouseOut)
+            document.body.removeChild(tooltip)
           })
         })
       } else {
