@@ -26,7 +26,7 @@ let editors: {
   uTime: WebGLUniformLocation | null,
   uMouse: WebGLUniformLocation | null,
 }[] = []
-for (let i = 0; i < 2; i++) {
+for (let i = 0; i < 4; i++) {
   const canvasNode = document.createElement('canvas')
   const editorNode = document.createElement('div')
   editorNode.className = "editor"
@@ -51,6 +51,7 @@ for (let i = 0; i < 2; i++) {
     lineWrapping: true,
     keyMap: "vim",
   })
+  codeMirror.setSize("100%", "100%")
   let gl = canvasNode.getContext("webgl")!
 
   let editor = {
@@ -87,23 +88,27 @@ function render(now: number) {
   let stillAnimating = true
 
   // === step 5: render. Batch DOM writes
-  let editorSizeX = 640, editorSizeY = 500
-  let canvasSizeX = 640, canvasSizeY = 360
+  let playgroundGap = 12
+  let editorSizeX = 640
+  let canvasSizeX = editorSizeX, canvasSizeY = 360
   let canvasRetinaSizeX = canvasSizeX * devicePixelRatio, canvasRetinaSizeY = canvasSizeY * devicePixelRatio
 
-  let left = 0
+  let left = playgroundGap
   for (let i = 0; i < editors.length; i++) {
     let editor = editors[i]
     const { editorNode, changed, codeMirror, canvasNode, gl, program } = editor
-    editorNode.style.width = `${editorSizeX}px`
-    editorNode.style.top = `${canvasSizeY}px`
-    editorNode.style.left = `${left}px`
 
     canvasNode.style.width = `${canvasSizeX}px`
     canvasNode.style.height = `${canvasSizeY}px`
     canvasNode.style.left = `${left}px`
+    canvasNode.style.top = `${playgroundGap}px`
     canvasNode.width = canvasRetinaSizeX // different than canvasNode.style.width. Btw this clears the canvas as well
     canvasNode.height = canvasRetinaSizeY
+
+    editorNode.style.width = `${editorSizeX}px`
+    editorNode.style.top = `${playgroundGap + canvasSizeY}px`
+    editorNode.style.height = `${windowSizeY - playgroundGap * 2 - canvasSizeY}px`
+    editorNode.style.left = `${left}px`
 
     if (changed) {
       gl.deleteProgram(program)
