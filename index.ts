@@ -16,15 +16,13 @@ function scheduleRender(debugForceRender = false) {
 
 // === state
 let editors: {
-  canvasNode: HTMLCanvasElement,
-  editorNode: HTMLDivElement,
+  canvasNode: HTMLCanvasElement, editorNode: HTMLDivElement,
   codeMirror: any,
   gl: WebGLRenderingContext,
   changed: boolean,
   program: WebGLProgram,
-  uRes: WebGLUniformLocation | null,
-  uTime: WebGLUniformLocation | null,
-  uMouse: WebGLUniformLocation | null,
+  fragmentShader: WebGLShader,
+  uRes: WebGLUniformLocation | null, uTime: WebGLUniformLocation | null, uMouse: WebGLUniformLocation | null,
 }[] = []
 for (let i = 0; i < 4; i++) {
   const canvasNode = document.createElement('canvas')
@@ -49,21 +47,36 @@ for (let i = 0; i < 4; i++) {
     theme: "material",
     lineNumbers: true,
     lineWrapping: true,
-    keyMap: "vim",
+    // keyMap: "vim",
   })
   codeMirror.setSize("100%", "100%")
+
   let gl = canvasNode.getContext("webgl")!
+  let program = gl.createProgram()!
+  const dummyVertexShader = gl.createShader(gl.VERTEX_SHADER)!
+  gl.shaderSource(dummyVertexShader, "attribute vec4 a_position; void main() {gl_Position = a_position;}")
+  gl.compileShader(dummyVertexShader)
+  gl.attachShader(program, dummyVertexShader)
+
+  const fragmentShader = gl.createShader(gl.FRAGMENT_SHADER)!
+  gl.shaderSource(fragmentShader, `precision mediump float; uniform vec3 iResolution; uniform float iTime; uniform vec4 iMouse;
+${codeMirror.getValue()}
+void main() {
+  vec4 fragColor;
+  mainImage(fragColor, gl_FragCoord.xy);
+  gl_FragColor = vec4(fragColor.xyz, 1.0);
+}`)
+  gl.compileShader(fragmentShader)
+  gl.attachShader(program, fragmentShader)
 
   let editor = {
-    canvasNode,
-    editorNode,
+    canvasNode, editorNode,
     codeMirror,
     gl,
     changed: true,
-    program: gl.createProgram()!,
-    uRes: null,
-    uTime: null,
-    uMouse: null,
+    program,
+    fragmentShader,
+    uRes: null, uTime: null, uMouse: null,
   }
   codeMirror.on("change", () => { // TODO: minimize dynamic events
     editor.changed = true
@@ -93,7 +106,7 @@ function render(now: number) {
   let left = playgroundGap
   for (let i = 0; i < editors.length; i++) {
     let editor = editors[i]
-    const { editorNode, changed, codeMirror, canvasNode, gl, program } = editor
+    const { editorNode, changed, codeMirror, canvasNode, gl, program, fragmentShader } = editor
 
     canvasNode.style.width = `${canvasSizeX}px`
     canvasNode.style.height = `${canvasSizeY}px`
@@ -108,52 +121,56 @@ function render(now: number) {
     editorNode.style.left = `${left}px`
 
     if (changed) {
-      gl.deleteProgram(program)
-      let newProgram = gl.createProgram()!
-      // TODO: get all error info: getShaderParameter, getShaderInfoLog, etc.
-      const dummyVertexShader = gl.createShader(gl.VERTEX_SHADER)!
-      gl.shaderSource(dummyVertexShader, "attribute vec4 a_position; void main() {gl_Position = a_position;}")
-      gl.compileShader(dummyVertexShader)
-      gl.attachShader(newProgram, dummyVertexShader)
-
-      const fragmentShader = gl.createShader(gl.FRAGMENT_SHADER)!
+      let newFragmentShader = gl.createShader(gl.FRAGMENT_SHADER)!
       gl.shaderSource(
-        fragmentShader,
+        newFragmentShader,
         `precision mediump float; uniform vec3 iResolution; uniform float iTime; uniform vec4 iMouse;
 ${codeMirror.getValue()}
 void main() {
   vec4 fragColor;
   mainImage(fragColor, gl_FragCoord.xy);
   gl_FragColor = vec4(fragColor.xyz, 1.0);
-}`
-      )
-      gl.compileShader(fragmentShader)
-      gl.attachShader(newProgram, fragmentShader)
-      // link and use
-      gl.linkProgram(newProgram)
-      gl.useProgram(newProgram)
-      gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer()) // set up the dummy vertex shader's buffer
-      gl.bufferData(
-        gl.ARRAY_BUFFER,
-        new Float32Array([-1, 1, 1, 1, -1, -1, 1, -1]), // 4 vertices (4 times x,y)
-        gl.STATIC_DRAW // we don't update the vertices after creating the buffer (we do destroy the program per keystroke though, but not per rAF)
-      )
-      const aPosition = gl.getAttribLocation(newProgram, "a_position")
-      gl.vertexAttribPointer(
-        aPosition,
-        2, // 2 components per attribute
-        gl.FLOAT,
-        false, // don't normalize the data. Aka, don't convert from whatever range to 0-1. Irrelevant for us
-        0, // stride
-        0 // offset
-      )
-      gl.enableVertexAttribArray(aPosition)
-      editor.program = newProgram
+}`)
+      gl.compileShader(newFragmentShader)
+      if (!gl.getShaderParameter(newFragmentShader, gl.COMPILE_STATUS)) { // TODO: get all other errors (e.g. link errors)
+        let errors = gl.getShaderInfoLog(newFragmentShader)!
+        const errorRegex = /ERROR: (\d+):(\d+): (.+)/g // e.g. "ERROR: 0:14: '{' : syntax error\nERROR: 1:13 ..."
+        let parsed = [...errors.matchAll(errorRegex)].map(([, row, col, message]) => {
+          return ({
+            row: parseInt(row),
+            col: parseInt(col),
+            message
+          })
+        })
+      } else {
+        editor.fragmentShader = newFragmentShader
+        gl.detachShader(program, fragmentShader)
+        gl.deleteShader(fragmentShader)
+        gl.attachShader(program, newFragmentShader)
+        gl.linkProgram(program)
+        gl.useProgram(program)
+        gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer()) // set up the dummy vertex shader's buffer
+        gl.bufferData(
+          gl.ARRAY_BUFFER,
+          new Float32Array([-1, 1, 1, 1, -1, -1, 1, -1]), // 4 vertices (4 times x,y)
+          gl.STATIC_DRAW // we don't update the vertices after creating the buffer (we do destroy the program per keystroke though, but not per rAF)
+        )
+        const aPosition = gl.getAttribLocation(program, "a_position")
+        gl.vertexAttribPointer(
+          aPosition,
+          2, // 2 components per attribute
+          gl.FLOAT,
+          false, // don't normalize the data. Aka, don't convert from whatever range to 0-1. Irrelevant for us
+          0, // stride
+          0 // offset
+        )
+        gl.enableVertexAttribArray(aPosition)
+      }
     }
     gl.viewport(0, 0, canvasRetinaSizeX, canvasRetinaSizeY) // needs to come after canvas width/height change, otherwise flash
-    let uRes = gl.getUniformLocation(editor.program, "iResolution")
-    let uTime = gl.getUniformLocation(editor.program, "iTime")
-    let uMouse = gl.getUniformLocation(editor.program, "iMouse")
+    let uRes = gl.getUniformLocation(program, "iResolution")
+    let uTime = gl.getUniformLocation(program, "iTime")
+    let uMouse = gl.getUniformLocation(program, "iMouse")
     // pass in shader variable values
     gl.uniform3f(uRes, canvasRetinaSizeX, canvasRetinaSizeY, 1.0)
     gl.uniform1f(uTime, now * 0.001)
