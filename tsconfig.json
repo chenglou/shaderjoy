@@ -1,6 +1,7 @@
 {
   "compilerOptions": {
-    "strict": true
+    "strict": true,
+    "target": "es6"
   },
   "files": [
     "index.ts"

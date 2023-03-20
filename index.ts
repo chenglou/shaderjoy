@@ -75,9 +75,6 @@ for (let i = 0; i < 4; i++) {
 
 // === events
 window.addEventListener("resize", () => scheduleRender())
-window.addEventListener("change", () => {
-  console.log('heu')
-})
 
 function render(now: number) {
   // === step 1: batched DOM reads (to avoid accidental DOM read & write interleaving)
@@ -122,10 +119,7 @@ function render(now: number) {
       const fragmentShader = gl.createShader(gl.FRAGMENT_SHADER)!
       gl.shaderSource(
         fragmentShader,
-        `precision mediump float;
-uniform vec3 iResolution;
-uniform float iTime;
-uniform vec4 iMouse;
+        `precision mediump float; uniform vec3 iResolution; uniform float iTime; uniform vec4 iMouse;
 ${codeMirror.getValue()}
 void main() {
   vec4 fragColor;
