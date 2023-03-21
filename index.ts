@@ -180,24 +180,28 @@ void main() {
 }`)
       gl.compileShader(newFragmentShader)
       if (!gl.getShaderParameter(newFragmentShader, gl.COMPILE_STATUS)) { // TODO: get all other errors (e.g. link errors)
-        let errors = gl.getShaderInfoLog(newFragmentShader)!
+        let errorsRaw = gl.getShaderInfoLog(newFragmentShader)!
         const errorRegex = /ERROR: \d+:(\d+): (.+)/g // e.g. "ERROR: 0:14: '{' : syntax error\nERROR: 1:13 ..."
-        editor.errorMarks = [...errors.matchAll(errorRegex)].map(([, line, message]) => {
-          const processedLine = parseInt(line) - 2 // -1 for codemirror's 0-indexing, -1 for the first line of the shader
 
+        let errors: { line: number, messages: string[] }[] = []
+        for (const [, line, message] of errorsRaw.matchAll(errorRegex)) {
+          const lineNumber = parseInt(line) - 2
+          if (errors.length === 0 || errors.at(-1)!.line !== lineNumber) {
+            errors.push({ line: lineNumber, messages: [] })
+          }
+          errors.at(-1)!.messages.push(message)
+        }
+
+        editor.errorMarks = errors.map(({ line, messages }) => {
           const tooltip = document.createElement("div")
           tooltip.className = "error-tooltip"
-          tooltip.textContent = message
+          tooltip.innerHTML = messages.join("<br>")
           tooltip.style.display = "none"
           document.body.appendChild(tooltip)
 
           const mark = document.createElement("div")
           mark.innerText = '!!'
-          codeMirror.setGutterMarker(
-            processedLine,
-            "CodeMirror-linenumbers",
-            mark
-          )
+          codeMirror.setGutterMarker(line, "CodeMirror-linenumbers", mark)
 
           const onMouseOver = (e: MouseEvent) => {
             const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
