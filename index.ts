@@ -97,9 +97,11 @@ void main() {
 let inputs: {
   pointerState: 'up' | 'down' | 'firstDown',
   pointer: { x: number, y: number },
+  lastPointer: { x: number, y: number }, // Add this line
 } = {
   pointerState: 'up',
   pointer: { x: -Infinity, y: -Infinity }, // btw, on page load, there's no way to render a first cursor state =(
+  lastPointer: { x: 0, y: 0 },
 }
 
 // === events
@@ -154,6 +156,7 @@ function render(now: number) {
     }
   }
   let iMouseX, iMouseY
+  let newLastPointer
   {
     let pointerX = inputs.pointer.x +/*toLocal*/scrollX
     let pointerY = inputs.pointer.y +/*toLocal*/scrollY
@@ -161,8 +164,11 @@ function render(now: number) {
     if (inputs.pointerState !== 'up' && hit != null) {
       iMouseX = (pointerX -/*toLocal*/canvasesLeft[hit]) * devicePixelRatio // TODO: document
       iMouseY = (canvasSizeY - (pointerY +/*toLocal*/canvasTop)) * devicePixelRatio // TODO: document
+      newLastPointer = { x: iMouseX, y: iMouseY }
     } else {
-      iMouseX = 0; iMouseY = 0
+      iMouseX = inputs.lastPointer.x
+      iMouseY = inputs.lastPointer.y
+      newLastPointer = inputs.lastPointer
     }
   }
 
@@ -290,6 +296,7 @@ void main() {
 
   // === step 6: update state & prepare for next frame
   if (inputs.pointerState === 'firstDown') inputs.pointerState = 'down'
+  inputs.lastPointer = newLastPointer
   for (let i = 0; i < editors.length; i++) editors[i].changed = false
 
   return stillAnimating
