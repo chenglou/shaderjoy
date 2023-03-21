@@ -124,11 +124,12 @@ window.addEventListener('mousedown', (e) => {
 })
 
 // === hit testing logic. Boxes' hit area should be static and not follow their current animated state usually (but we can do either)
-// used below to check if canvas' hit area is under the pointer
-function hitTest(top: number, left: number, sizeX: number, sizeY: number, x: number, y: number) {
-  return top <= y && y <= top + sizeY && left <= x && x <= left + sizeX
+function hitTest(canvasesLeft: number[], canvasTop: number, canvasSizeX: number, canvasSizeY: number, x: number, y: number) {
+  for (let i = 0; i < canvasesLeft.length; i++) {
+    let left = canvasesLeft[i]
+    if (canvasTop <= y && y <= canvasTop + canvasSizeY && left <= x && x <= left + canvasSizeX) return i
+  }
 }
-
 
 function render(now: number) {
   // === step 1: batched DOM reads (to avoid accidental DOM read & write interleaving)
@@ -136,23 +137,45 @@ function render(now: number) {
   const windowSizeY = document.documentElement.clientHeight // same
   const { devicePixelRatio, scrollX, scrollY } = window
 
+  // layout metrics
+  const playgroundGap = 12
+  const editorSizeX = 600
+  const canvasSizeX = editorSizeX, canvasSizeY = editorSizeX / 2
+  const canvasTop = playgroundGap
+  const canvasRetinaSizeX = canvasSizeX * devicePixelRatio, canvasRetinaSizeY = canvasSizeY * devicePixelRatio
+
+  // === step 2: handle inputs-related state change
+  let canvasesLeft = []
+  {
+    let left = playgroundGap
+    for (let i = 0; i < editors.length; i++) {
+      canvasesLeft.push(left)
+      left += canvasSizeX + 20 // canvases gap
+    }
+  }
+  let iMouseX, iMouseY
+  {
+    let pointerX = inputs.pointer.x +/*toLocal*/scrollX
+    let pointerY = inputs.pointer.y +/*toLocal*/scrollY
+    let hit = hitTest(canvasesLeft, playgroundGap, canvasSizeX, canvasSizeY, pointerX, pointerY)
+    if (inputs.pointerState !== 'up' && hit != null) {
+      iMouseX = (pointerX -/*toLocal*/canvasesLeft[hit]) * devicePixelRatio // TODO: document
+      iMouseY = (canvasSizeY - (pointerY +/*toLocal*/canvasTop)) * devicePixelRatio // TODO: document
+    } else {
+      iMouseX = 0; iMouseY = 0
+    }
+  }
+
   let stillAnimating = true
 
   // === step 5: render. Batch DOM writes
-  let playgroundGap = 12
-  let editorSizeX = 600
-  let canvasSizeX = editorSizeX, canvasSizeY = editorSizeX / 2
-  let canvasRetinaSizeX = canvasSizeX * devicePixelRatio, canvasRetinaSizeY = canvasSizeY * devicePixelRatio
-
-  let left = playgroundGap
   for (let i = 0; i < editors.length; i++) {
     let editor = editors[i]
     const { editorNode, changed, codeMirror, canvasNode, gl, program, fragmentShader } = editor
 
-    const canvasTop = playgroundGap, canvasLeft = left
     canvasNode.style.width = `${canvasSizeX}px`
     canvasNode.style.height = `${canvasSizeY}px`
-    canvasNode.style.left = `${canvasLeft}px`
+    canvasNode.style.left = `${canvasesLeft[i]}px`
     canvasNode.style.top = `${canvasTop}px`
     canvasNode.width = canvasRetinaSizeX // different than canvasNode.style.width. Btw this clears the canvas as well
     canvasNode.height = canvasRetinaSizeY
@@ -160,7 +183,7 @@ function render(now: number) {
     editorNode.style.width = `${editorSizeX}px`
     editorNode.style.top = `${canvasTop + canvasSizeY}px`
     editorNode.style.height = `${windowSizeY - playgroundGap * 2 - canvasSizeY}px`
-    editorNode.style.left = `${canvasLeft}px`
+    editorNode.style.left = `${canvasesLeft[i]}px`
 
     if (changed) {
       // Clear previous error highlights
@@ -256,20 +279,8 @@ void main() {
     // pass in shader variable values
     gl.uniform3f(uRes, canvasRetinaSizeX, canvasRetinaSizeY, 1.0)
     gl.uniform1f(uTime, now * 0.001)
-    let pointerX = inputs.pointer.x +/*toLocal*/scrollX
-    let pointerY = inputs.pointer.y +/*toLocal*/scrollY
-    const hit = hitTest(canvasTop, canvasLeft, canvasSizeX, canvasSizeY, pointerX, pointerY)
-    let x, y
-    if (hit && inputs.pointerState !== 'up') {
-      x = (pointerX -/*toLocal*/canvasLeft) * devicePixelRatio // TODO: document
-      y = (canvasSizeY - (pointerY +/*toLocal*/canvasTop)) * devicePixelRatio // TODO: document
-    } else {
-      x = 0; y = 0
-    }
-    gl.uniform4f(uMouse, x, y, inputs.pointerState === 'up' ? 0 : 1, inputs.pointerState === 'firstDown' ? 1 : 0)
+    gl.uniform4f(uMouse, iMouseX, iMouseY, inputs.pointerState === 'up' ? 0 : 1, inputs.pointerState === 'firstDown' ? 1 : 0)
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
-
-    left += editorSizeX + 20 // gap
   }
 
   if (editors.some(e => e.changed)) {
