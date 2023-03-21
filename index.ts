@@ -94,15 +94,47 @@ void main() {
 
   editors.push(editor)
 }
+let inputs: {
+  pointerState: 'up' | 'down' | 'firstDown',
+  pointer: { x: number, y: number },
+} = {
+  pointerState: 'up',
+  pointer: { x: -Infinity, y: -Infinity }, // btw, on page load, there's no way to render a first cursor state =(
+}
 
 // === events
-window.addEventListener("resize", () => scheduleRender())
+window.addEventListener('resize', () => scheduleRender())
+window.addEventListener("mouseup", (e) => {
+  inputs.pointerState = 'up'
+  scheduleRender()
+})
+window.addEventListener("mousemove", (e) => {
+  // when scrolling (which might schedule a render), a container's mousemove doesn't trigger, so the pointer's local coordinates are stale
+  // this means we should only use pointer's global coordinates, which is always right (thus the subtraction of scroll)
+  inputs.pointer.x = e.pageX -/*toGlobal*/window.scrollX; inputs.pointer.y = e.pageY -/*toGlobal*/window.scrollY
+  // btw, pointer can exceed document bounds, e.g. dragging reports back out-of-bound, legal negative values
+  scheduleRender()
+})
+window.addEventListener('mousedown', (e) => {
+  inputs.pointerState = 'firstDown'
+  // needed to update coords even when we already track pointermove. E.g. in Chrome, right click context menu, move elsewhere, then click to dismiss. BAM, pointermove triggers with stale/wrong (??) coordinates... Click again without moving, and now you're clicking on the wrong thing
+  inputs.pointer.x = e.pageX -/*toGlobal*/window.scrollX; inputs.pointer.y = e.pageY -/*toGlobal*/window.scrollY
+  // btw, pointer can exceed document bounds, e.g. dragging reports back out-of-bound, legal negative values
+  scheduleRender()
+})
+
+// === hit testing logic. Boxes' hit area should be static and not follow their current animated state usually (but we can do either)
+// used below to check if canvas' hit area is under the pointer
+function hitTest(top: number, left: number, sizeX: number, sizeY: number, x: number, y: number) {
+  return top <= y && y <= top + sizeY && left <= x && x <= left + sizeX
+}
+
 
 function render(now: number) {
   // === step 1: batched DOM reads (to avoid accidental DOM read & write interleaving)
   const windowSizeX = document.documentElement.clientWidth // excludes scroll bar & invariant under safari pinch zoom
   const windowSizeY = document.documentElement.clientHeight // same
-  const devicePixelRatio = window.devicePixelRatio
+  const { devicePixelRatio, scrollX, scrollY } = window
 
   let stillAnimating = true
 
@@ -117,17 +149,18 @@ function render(now: number) {
     let editor = editors[i]
     const { editorNode, changed, codeMirror, canvasNode, gl, program, fragmentShader } = editor
 
+    const canvasTop = playgroundGap, canvasLeft = left
     canvasNode.style.width = `${canvasSizeX}px`
     canvasNode.style.height = `${canvasSizeY}px`
-    canvasNode.style.left = `${left}px`
-    canvasNode.style.top = `${playgroundGap}px`
+    canvasNode.style.left = `${canvasLeft}px`
+    canvasNode.style.top = `${canvasTop}px`
     canvasNode.width = canvasRetinaSizeX // different than canvasNode.style.width. Btw this clears the canvas as well
     canvasNode.height = canvasRetinaSizeY
 
     editorNode.style.width = `${editorSizeX}px`
-    editorNode.style.top = `${playgroundGap + canvasSizeY}px`
+    editorNode.style.top = `${canvasTop + canvasSizeY}px`
     editorNode.style.height = `${windowSizeY - playgroundGap * 2 - canvasSizeY}px`
-    editorNode.style.left = `${left}px`
+    editorNode.style.left = `${canvasLeft}px`
 
     if (changed) {
       // Clear previous error highlights
@@ -166,8 +199,8 @@ void main() {
             mark
           )
 
-          const onMouseOver = (e) => {
-            const rect = e.target.getBoundingClientRect()
+          const onMouseOver = (e: MouseEvent) => {
+            const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
             tooltip.style.left = `${rect.right + 10}px`
             tooltip.style.top = `${rect.top}px`
             tooltip.style.display = "block"
@@ -219,7 +252,17 @@ void main() {
     // pass in shader variable values
     gl.uniform3f(uRes, canvasRetinaSizeX, canvasRetinaSizeY, 1.0)
     gl.uniform1f(uTime, now * 0.001)
-    gl.uniform4f(uMouse, 0, 0, 0, 0)
+    let pointerX = inputs.pointer.x +/*toLocal*/scrollX
+    let pointerY = inputs.pointer.y +/*toLocal*/scrollY
+    const hit = hitTest(canvasTop, canvasLeft, canvasSizeX, canvasSizeY, pointerX, pointerY)
+    let x, y
+    if (hit && inputs.pointerState !== 'up') {
+      x = (pointerX -/*toLocal*/canvasLeft) * devicePixelRatio // TODO: document
+      y = (canvasSizeY - (pointerY +/*toLocal*/canvasTop)) * devicePixelRatio // TODO: document
+    } else {
+      x = 0; y = 0
+    }
+    gl.uniform4f(uMouse, x, y, inputs.pointerState === 'up' ? 0 : 1, inputs.pointerState === 'firstDown' ? 1 : 0)
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
 
     left += editorSizeX + 20 // gap
@@ -231,6 +274,7 @@ void main() {
   }
 
   // === step 6: update state & prepare for next frame
+  if (inputs.pointerState === 'firstDown') inputs.pointerState = 'down'
   for (let i = 0; i < editors.length; i++) editors[i].changed = false
 
   return stillAnimating
