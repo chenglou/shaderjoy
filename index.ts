@@ -139,7 +139,7 @@ function render(now: number) {
 
   // layout metrics
   const playgroundGap = 12
-  const editorSizeX = 600
+  const editorSizeX = 700
   const canvasSizeX = editorSizeX, canvasSizeY = editorSizeX / 2
   const canvasTop = playgroundGap
   const canvasRetinaSizeX = canvasSizeX * devicePixelRatio, canvasRetinaSizeY = canvasSizeY * devicePixelRatio
