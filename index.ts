@@ -236,8 +236,8 @@ void main() {
 
           const onMouseOver = (e: MouseEvent) => {
             const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
-            tooltip.style.left = `${rect.right + 10}px`
-            tooltip.style.top = `${rect.top}px`
+            tooltip.style.left = `${rect.right + 10 +/*toLocal*/window.scrollX}px`
+            tooltip.style.top = `${rect.top + /*toLocal*/window.scrollY}px`
             tooltip.style.display = "block"
           }
 
