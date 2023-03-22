@@ -126,10 +126,10 @@ window.addEventListener('mousedown', (e) => {
 })
 
 // === hit testing logic. Boxes' hit area should be static and not follow their current animated state usually (but we can do either)
-function hitTest(canvasesLeft: number[], canvasTop: number, canvasSizeX: number, canvasSizeY: number, x: number, y: number) {
+function hitTest(canvasesLeft: number[], canvasesTop: number[], canvasSizeX: number, canvasSizeY: number, x: number, y: number) {
   for (let i = 0; i < canvasesLeft.length; i++) {
-    let left = canvasesLeft[i]
-    if (canvasTop <= y && y <= canvasTop + canvasSizeY && left <= x && x <= left + canvasSizeX) return i
+    let left = canvasesLeft[i], top = canvasesTop[i]
+    if (top <= y && y <= top + canvasSizeY && left <= x && x <= left + canvasSizeX) return i
   }
 }
 
@@ -141,17 +141,19 @@ function render(now: number) {
 
   // layout metrics
   const playgroundGap = 12
-  const editorSizeX = 700
+  const editorSizeX = 700, editorSizeY = 400
   const canvasSizeX = editorSizeX, canvasSizeY = editorSizeX / 2
-  const canvasTop = playgroundGap
   const canvasRetinaSizeX = canvasSizeX * devicePixelRatio, canvasRetinaSizeY = canvasSizeY * devicePixelRatio
 
   // === step 2: handle inputs-related state change
   let canvasesLeft = []
+  let canvasesTop = [] // TODO: implement this
   {
     let left = playgroundGap
     for (let i = 0; i < editors.length; i++) {
+      if (i === 4) left = playgroundGap // new row
       canvasesLeft.push(left)
+      canvasesTop.push(i < 4 ? playgroundGap : playgroundGap + canvasSizeY + editorSizeY + playgroundGap)
       left += canvasSizeX + 20 // canvases gap
     }
   }
@@ -160,10 +162,10 @@ function render(now: number) {
   {
     let pointerX = inputs.pointer.x +/*toLocal*/scrollX
     let pointerY = inputs.pointer.y +/*toLocal*/scrollY
-    let hit = hitTest(canvasesLeft, playgroundGap, canvasSizeX, canvasSizeY, pointerX, pointerY)
+    let hit = hitTest(canvasesLeft, canvasesTop, canvasSizeX, canvasSizeY, pointerX, pointerY)
     if (inputs.pointerState !== 'up' && hit != null) {
       iMouseX = (pointerX -/*toLocal*/canvasesLeft[hit]) * devicePixelRatio // TODO: document
-      iMouseY = (canvasSizeY - (pointerY +/*toLocal*/canvasTop)) * devicePixelRatio // TODO: document
+      iMouseY = (canvasSizeY - (pointerY +/*toLocal*/canvasesTop[hit])) * devicePixelRatio // TODO: document
       newLastPointer = { x: iMouseX, y: iMouseY }
     } else {
       iMouseX = inputs.lastPointer.x
@@ -182,13 +184,13 @@ function render(now: number) {
     canvasNode.style.width = `${canvasSizeX}px`
     canvasNode.style.height = `${canvasSizeY}px`
     canvasNode.style.left = `${canvasesLeft[i]}px`
-    canvasNode.style.top = `${canvasTop}px`
+    canvasNode.style.top = `${canvasesTop[i]}px`
     canvasNode.width = canvasRetinaSizeX // different than canvasNode.style.width. Btw this clears the canvas as well
     canvasNode.height = canvasRetinaSizeY
 
     editorNode.style.width = `${editorSizeX}px`
-    editorNode.style.top = `${canvasTop + canvasSizeY}px`
-    editorNode.style.height = `${windowSizeY - playgroundGap * 2 - canvasSizeY}px`
+    editorNode.style.top = `${canvasesTop[i] + canvasSizeY}px`
+    editorNode.style.height = `${editorSizeY}px`
     editorNode.style.left = `${canvasesLeft[i]}px`
 
     if (changed) {
