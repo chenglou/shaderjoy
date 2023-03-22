@@ -59,20 +59,22 @@ for (let i = 0; i < codes.length; i++) {
   })
   codeMirror.setSize("100%", "100%")
 
-  let gl = canvasNode.getContext("webgl")!
+  let gl = canvasNode.getContext("webgl2")!
   let program = gl.createProgram()!
   const dummyVertexShader = gl.createShader(gl.VERTEX_SHADER)!
-  gl.shaderSource(dummyVertexShader, "attribute vec4 a_position; void main() {gl_Position = a_position;}")
+  gl.shaderSource(dummyVertexShader, `#version 300 es
+in vec4 a_position; void main() {gl_Position = a_position;}`)
   gl.compileShader(dummyVertexShader)
   gl.attachShader(program, dummyVertexShader)
 
   const fragmentShader = gl.createShader(gl.FRAGMENT_SHADER)!
-  gl.shaderSource(fragmentShader, `precision mediump float; uniform vec3 iResolution; uniform float iTime; uniform vec4 iMouse;
+  gl.shaderSource(fragmentShader, `#version 300 es
+precision mediump float; uniform vec3 iResolution; uniform float iTime; uniform vec4 iMouse; layout(location = 0) out vec4 fragColor;
 ${codeMirror.getValue()}
 void main() {
-  vec4 fragColor;
-  mainImage(fragColor, gl_FragCoord.xy);
-  gl_FragColor = vec4(fragColor.xyz, 1.0);
+  vec4 outColor;
+  mainImage(outColor, gl_FragCoord.xy);
+  fragColor = vec4(outColor.xyz, 1.0);
 }`)
   gl.compileShader(fragmentShader)
   gl.attachShader(program, fragmentShader)
@@ -202,12 +204,13 @@ function render(now: number) {
       const newCode = codeMirror.getValue()
       gl.shaderSource(
         newFragmentShader,
-        `precision mediump float; uniform vec3 iResolution; uniform float iTime; uniform vec4 iMouse;
+        `#version 300 es
+precision mediump float; uniform vec3 iResolution; uniform float iTime; uniform vec4 iMouse; layout(location = 0) out vec4 fragColor;
 ${newCode}
 void main() {
-  vec4 fragColor;
-  mainImage(fragColor, gl_FragCoord.xy);
-  gl_FragColor = vec4(fragColor.xyz, 1.0);
+  vec4 outColor;
+  mainImage(outColor, gl_FragCoord.xy);
+  fragColor = vec4(outColor.xyz, 1.0);
 }`)
       gl.compileShader(newFragmentShader)
       if (!gl.getShaderParameter(newFragmentShader, gl.COMPILE_STATUS)) { // TODO: get all other errors (e.g. link errors)
@@ -216,7 +219,7 @@ void main() {
 
         let errors: { line: number, messages: string[] }[] = []
         for (const [, line, message] of errorsRaw.matchAll(errorRegex)) {
-          const lineNumber = parseInt(line) - 2
+          const lineNumber = parseInt(line) - 3 // -1 for 0-indexing, -2 for preamble
           if (errors.length === 0 || errors.at(-1)!.line !== lineNumber) {
             errors.push({ line: lineNumber, messages: [] })
           }
