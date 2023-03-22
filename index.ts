@@ -165,7 +165,7 @@ function render(now: number) {
     let hit = hitTest(canvasesLeft, canvasesTop, canvasSizeX, canvasSizeY, pointerX, pointerY)
     if (inputs.pointerState !== 'up' && hit != null) {
       iMouseX = (pointerX -/*toLocal*/canvasesLeft[hit]) * devicePixelRatio // TODO: document
-      iMouseY = (canvasSizeY - (pointerY +/*toLocal*/canvasesTop[hit])) * devicePixelRatio // TODO: document
+      iMouseY = (canvasSizeY - (pointerY -/*toLocal*/canvasesTop[hit])) * devicePixelRatio // TODO: document
       newLastPointer = { x: iMouseX, y: iMouseY }
     } else {
       iMouseX = inputs.lastPointer.x
