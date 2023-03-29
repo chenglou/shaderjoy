@@ -108,11 +108,11 @@ let inputs: {
 
 // === events
 window.addEventListener('resize', () => scheduleRender())
-window.addEventListener("mouseup", (e) => {
+window.addEventListener('mouseup', (e) => {
   inputs.pointerState = 'up'
   scheduleRender()
 })
-window.addEventListener("mousemove", (e) => {
+window.addEventListener('mousemove', (e) => {
   // when scrolling (which might schedule a render), a container's mousemove doesn't trigger, so the pointer's local coordinates are stale
   // this means we should only use pointer's global coordinates, which is always right (thus the subtraction of scroll)
   inputs.pointer.x = e.pageX -/*toGlobal*/window.scrollX; inputs.pointer.y = e.pageY -/*toGlobal*/window.scrollY
@@ -120,6 +120,7 @@ window.addEventListener("mousemove", (e) => {
   scheduleRender()
 })
 window.addEventListener('mousedown', (e) => {
+  e.preventDefault() // this shouldn't be here but it's convenient for now. When dragging over canvases, prevent accidentally selecting code
   inputs.pointerState = 'firstDown'
   // needed to update coords even when we already track pointermove. E.g. in Chrome, right click context menu, move elsewhere, then click to dismiss. BAM, pointermove triggers with stale/wrong (??) coordinates... Click again without moving, and now you're clicking on the wrong thing
   inputs.pointer.x = e.pageX -/*toGlobal*/window.scrollX; inputs.pointer.y = e.pageY -/*toGlobal*/window.scrollY
