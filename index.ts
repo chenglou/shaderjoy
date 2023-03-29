@@ -144,20 +144,25 @@ function render(now: number) {
 
   // layout metrics
   const playgroundGap = 12
-  const editorSizeX = 700, editorSizeY = 400
+  const editorSizeX = 600, editorSizeY = 400
   const canvasSizeX = editorSizeX, canvasSizeY = editorSizeX / 2
   const canvasRetinaSizeX = canvasSizeX * devicePixelRatio, canvasRetinaSizeY = canvasSizeY * devicePixelRatio
 
   // === step 2: handle inputs-related state change
   let canvasesLeft = []
-  let canvasesTop = [] // TODO: implement this
+  let canvasesTop = []
   {
-    let left = playgroundGap
+    let boxSizeY = canvasSizeY + editorSizeY
+    let portrait = windowSizeX < windowSizeY
     for (let i = 0; i < editors.length; i++) {
-      if (i === 4) left = playgroundGap // new row
+      let top = portrait
+        ? Math.floor(i / 2) * (boxSizeY + playgroundGap) + playgroundGap
+        : Math.floor(i / 4) * (boxSizeY + playgroundGap) + playgroundGap
+      let left = portrait
+        ? (i % 2) * (canvasSizeX + playgroundGap) + playgroundGap
+        : (i % 4) * (canvasSizeX + playgroundGap) + playgroundGap
       canvasesLeft.push(left)
-      canvasesTop.push(i < 4 ? playgroundGap : playgroundGap + canvasSizeY + editorSizeY + playgroundGap)
-      left += canvasSizeX + 20 // canvases gap
+      canvasesTop.push(top)
     }
   }
   let iMouseX, iMouseY
