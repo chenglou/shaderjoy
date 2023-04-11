@@ -36,7 +36,7 @@ const defaultCode = `void mainImage( out vec4 fragColor, in vec2 fragCoord ) {
 // === state
 let codes_ = localStorage.getItem(`codes`)
 let codes = codes_ ? JSON.parse(codes_) : []
-for (let i = codes.length; i < 8; i++) codes.push(defaultCode) // fill codes with defaultCode til it has 8 elements
+for (let i = codes.length; i < 16; i++) codes.push(defaultCode) // fill codes with defaultCode til it has 8 elements
 
 let editors: {
   canvasNode: HTMLCanvasElement, editorNode: HTMLDivElement,
