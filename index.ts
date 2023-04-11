@@ -46,7 +46,6 @@ let editors: {
   changed: boolean,
   program: WebGLProgram,
   fragmentShader: WebGLShader | null,
-  uRes: WebGLUniformLocation | null, uTime: WebGLUniformLocation | null, uMouse: WebGLUniformLocation | null,
 }[] = []
 for (let i = 0; i < codes.length; i++) {
   const canvasNode = document.createElement('canvas')
