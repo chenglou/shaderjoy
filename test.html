@@ -1,168 +1,131 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <title>WebGL Example</title>
-    <style>
-      canvas {
-        display: block;
-      }
-    </style>
-  </head>
-  <body>
-    <canvas id="canvas0" width="300" height="300"></canvas>
-    <canvas id="canvas1" width="300" height="300"></canvas>
-    <canvas id="canvas2" width="300" height="300"></canvas>
-    <script>
-      const vsSource = `
+
+<head>
+  <meta charset="UTF-8" />
+  <title>WebGL Example</title>
+  <style>
+    canvas {
+      display: block;
+    }
+
+  </style>
+</head>
+
+<body>
+  <canvas id="canvas0" width="300" height="300"></canvas>
+  <canvas id="canvas1" width="300" height="300"></canvas>
+  <canvas id="canvas2" width="300" height="300"></canvas>
+  <script>
+    const vsSource = `
         attribute vec4 a_position;
         void main() {
           gl_Position = a_position;
         }
       `;
 
-      const fsSource1 = `
+    const fsSource1 = `
         precision mediump float;
         void main() {
-          gl_FragColor = vec4(1.0, 0.0, 0.0, 0.3); // red
+          gl_FragColor = vec4(gl_FragCoord.x / 600., gl_FragCoord.y / 600., .5, 0.3); // red
         }
       `;
 
-      const fsSource2 = `
+    const fsSource2 = `
         precision mediump float;
         void main() {
           gl_FragColor = vec4(0.0, 1.0, 0.0, 0.2); // green
         }
       `;
 
-      function createShader(gl, type, source) {
-        const shader = gl.createShader(type);
-        gl.shaderSource(shader, source);
-        gl.compileShader(shader);
-        return shader;
-      }
+    function createShader(gl, type, source) {
+      const shader = gl.createShader(type);
+      gl.shaderSource(shader, source);
+      gl.compileShader(shader);
+      return shader;
+    }
 
-      function createProgram(gl, vertexShader, fragmentShader) {
-        const program = gl.createProgram();
-        gl.attachShader(program, vertexShader);
-        gl.attachShader(program, fragmentShader);
-        gl.linkProgram(program);
-        return program;
-      }
+    function createProgram(gl, vertexShader, fragmentShader) {
+      const program = gl.createProgram();
+      gl.attachShader(program, vertexShader);
+      gl.attachShader(program, fragmentShader);
+      gl.linkProgram(program);
+      return program;
+    }
 
-      const canvas0 = document.getElementById("canvas0");
-      const canvas1 = document.getElementById("canvas1");
-      const canvas2 = document.getElementById("canvas2");
-      const gl = canvas0.getContext("webgl2");
+    const canvas0 = document.getElementById("canvas0");
+    const canvas1 = document.getElementById("canvas1");
+    const canvas2 = document.getElementById("canvas2");
+    const gl = canvas0.getContext("webgl2");
 
-      const vertexShader = createShader(gl, gl.VERTEX_SHADER, vsSource);
-      const fragmentShader1 = createShader(gl, gl.FRAGMENT_SHADER, fsSource1);
-      const fragmentShader2 = createShader(gl, gl.FRAGMENT_SHADER, fsSource2);
+    const vertexShader = createShader(gl, gl.VERTEX_SHADER, vsSource);
+    const fragmentShader1 = createShader(gl, gl.FRAGMENT_SHADER, fsSource1);
+    const fragmentShader2 = createShader(gl, gl.FRAGMENT_SHADER, fsSource2);
 
-      const program1 = createProgram(gl, vertexShader, fragmentShader1);
-      const program2 = createProgram(gl, vertexShader, fragmentShader2);
+    let shaders = [
+      {
+        canvas: canvas1,
+        program: createProgram(gl, vertexShader, fragmentShader1),
+        fragmentShader: fragmentShader1,
+        frameBuffer: gl.createFramebuffer(),
+      },
+      {
+        canvas: canvas2,
+        program: createProgram(gl, vertexShader, fragmentShader2),
+        fragmentShader: fragmentShader2,
+        frameBuffer: gl.createFramebuffer(),
+      },
+    ];
 
-      const positionAttributeLocation = gl.getAttribLocation(
-        program1,
-        "a_position"
-      );
-      const positionBuffer = gl.createBuffer();
-      const positions = [-1, -1, 1, -1, -1, 1, 1, 1];
-      gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
-      gl.bufferData(
-        gl.ARRAY_BUFFER,
-        new Float32Array(positions),
-        gl.STATIC_DRAW
-      );
+    const positionBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
 
-      function drawScene(program, framebuffer) {
-        gl.useProgram(program);
-        gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
-        gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
-        gl.enableVertexAttribArray(positionAttributeLocation);
-        gl.vertexAttribPointer(
-          positionAttributeLocation,
-          2,
-          gl.FLOAT,
-          false,
-          0,
-          0
-        );
+    // create & bind color texture. Reuse it for all framebuffers
+    const colorTexture = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, colorTexture);
 
-        gl.viewport(0, 0, canvas0.width, canvas0.height);
-        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-      }
+    let ratio = window.devicePixelRatio
 
-      function drawFramebufferToCanvas(gl, framebuffer, canvas) {
-        const ctx = canvas.getContext("2d");
-        const width = canvas.width;
-        const height = canvas.height;
-        const pixels = new Uint8Array(width * height * 4);
+    let width = 300;
+    let height = 300;
+    canvas0.style.width = `${width}px`
+    canvas0.style.height = `${height}px`
+    canvas0.width = width * ratio // different than canvas0.style.width. Btw this clears the canvas as well
+    canvas0.height = height * ratio
 
-        gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
-        gl.readPixels(0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
-        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    shaders.forEach((shader) => {
+      const { canvas, program, fragmentShader, frameBuffer } = shader;
 
-        const imageData = ctx.createImageData(width, height);
-        imageData.data.set(pixels);
-        ctx.putImageData(imageData, 0, 0);
-      }
+      canvas.style.width = `${width}px`
+      canvas.style.height = `${height}px`
+      canvas.width = width * ratio // different than canvas.style.width. Btw this clears the canvas as well
+      canvas.height = height * ratio
 
-      const fb1 = gl.createFramebuffer();
-      gl.bindFramebuffer(gl.FRAMEBUFFER, fb1);
-      const colorTex1 = gl.createTexture();
-      gl.bindTexture(gl.TEXTURE_2D, colorTex1);
-      gl.texImage2D(
-        gl.TEXTURE_2D,
-        0,
-        gl.RGBA,
-        canvas0.width,
-        canvas0.height,
-        0,
-        gl.RGBA,
-        gl.UNSIGNED_BYTE,
-        null
-      );
-      gl.framebufferTexture2D(
-        gl.FRAMEBUFFER,
-        gl.COLOR_ATTACHMENT0,
-        gl.TEXTURE_2D,
-        colorTex1,
-        0
-      );
+      const positionAttributeLocation = gl.getAttribLocation(program, "a_position");
+      gl.enableVertexAttribArray(positionAttributeLocation);
+      gl.vertexAttribPointer(positionAttributeLocation, 2, gl.FLOAT, false, 0, 0);
 
-      drawScene(program1, fb1);
-      drawFramebufferToCanvas(gl, fb1, canvas1);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, frameBuffer);
+
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, width * ratio, height * ratio, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, colorTexture, 0);
+
+      gl.useProgram(program);
+      gl.viewport(0, 0, width * ratio, height * ratio);
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+      const pixels = new Uint8Array(width * height * 4 * ratio * ratio);
+      gl.readPixels(0, 0, width * ratio, height * ratio, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+
+      const ctx = canvas.getContext("2d");
+      const imageData = ctx.createImageData(width * ratio, height * ratio);
+      imageData.data.set(pixels);
+      ctx.putImageData(imageData, 0, 0);
 
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    });
+  </script>
+</body>
 
-      const fb2 = gl.createFramebuffer();
-      gl.bindFramebuffer(gl.FRAMEBUFFER, fb2);
-      const colorTex2 = gl.createTexture();
-      gl.bindTexture(gl.TEXTURE_2D, colorTex2);
-      gl.texImage2D(
-        gl.TEXTURE_2D,
-        0,
-        gl.RGBA,
-        canvas0.width,
-        canvas0.height,
-        0,
-        gl.RGBA,
-        gl.UNSIGNED_BYTE,
-        null
-      );
-      gl.framebufferTexture2D(
-        gl.FRAMEBUFFER,
-        gl.COLOR_ATTACHMENT0,
-        gl.TEXTURE_2D,
-        colorTex2,
-        0
-      );
-
-      drawScene(program2, fb2);
-      drawFramebufferToCanvas(gl, fb2, canvas2);
-
-      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    </script>
-  </body>
 </html>

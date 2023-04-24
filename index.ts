@@ -38,6 +38,10 @@ let codes_ = localStorage.getItem(`codes`)
 let codes = codes_ ? JSON.parse(codes_) : []
 for (let i = codes.length; i < 16; i++) codes.push(defaultCode) // fill codes with defaultCode til it has 8 elements
 
+// Can't use too many WebGL contexts due to browser limitation, so we'll reuse one WebGL context reuse to render, then draw to canvas2D canvases
+let glNode = document.createElement('canvas')
+let gl = glNode.getContext("webgl2")!
+
 let editors: {
   canvasNode: HTMLCanvasElement, editorNode: HTMLDivElement,
   codeMirror: any,
@@ -46,6 +50,7 @@ let editors: {
   changed: boolean,
   program: WebGLProgram,
   fragmentShader: WebGLShader | null,
+  frameBuffer: WebGLFramebuffer,
 }[] = []
 for (let i = 0; i < codes.length; i++) {
   const canvasNode = document.createElement('canvas')
@@ -63,7 +68,6 @@ for (let i = 0; i < codes.length; i++) {
   })
   codeMirror.setSize("100%", "100%")
 
-  let gl = canvasNode.getContext("webgl2")!
   let program = gl.createProgram()!
   const dummyVertexShader = gl.createShader(gl.VERTEX_SHADER)!
   gl.shaderSource(dummyVertexShader, `#version 300 es
@@ -79,7 +83,7 @@ in vec4 a_position; void main() {gl_Position = a_position;}`)
     changed: true,
     program,
     fragmentShader: null,
-    uRes: null, uTime: null, uMouse: null,
+    frameBuffer: gl.createFramebuffer()!,
   }
   codeMirror.on("change", () => { // TODO: minimize dynamic events
     editor.changed = true
@@ -177,9 +181,27 @@ function render(now: number) {
   let stillAnimating = true
 
   // === step 5: render. Batch DOM writes
+
+  const positionBuffer = gl.createBuffer()
+  gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer)
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW)
+
+  // preparations to create & bind color texture and fill it with floats. Reuse it for all framebuffers
+  const colorTexture = gl.createTexture()
+  gl.bindTexture(gl.TEXTURE_2D, colorTexture)
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, canvasRetinaSizeX, canvasRetinaSizeY, 0, gl.RGBA, gl.UNSIGNED_BYTE, null)
+  const reusedPixelsData = new Uint8Array(canvasRetinaSizeX * canvasRetinaSizeY * 4) // 4 floats per pixel
+
+  glNode.style.width = `${canvasSizeX}px`
+  glNode.style.height = `${canvasSizeY}px`
+  glNode.width = canvasRetinaSizeX // different than glNode.style.width. Btw this clears the canvas as well
+  glNode.height = canvasRetinaSizeY
+
+  gl.viewport(0, 0, canvasRetinaSizeX, canvasRetinaSizeY) // needs to come after canvas width/height change, otherwise flash
+
   for (let i = 0; i < editors.length; i++) {
     let editor = editors[i]
-    const { editorNode, changed, codeMirror, canvasNode, gl, program, fragmentShader } = editor
+    const { editorNode, changed, codeMirror, canvasNode, gl, program, fragmentShader, frameBuffer } = editor
 
     canvasNode.style.width = `${canvasSizeX}px`
     canvasNode.style.height = `${canvasSizeY}px`
@@ -219,13 +241,13 @@ void main() {
         editor.fragmentShader = newFragmentShader
         gl.attachShader(program, newFragmentShader)
         gl.linkProgram(program) // TODO: check link status
-        gl.useProgram(program)
-        gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer()) // set up the dummy vertex shader's buffer
-        gl.bufferData(
-          gl.ARRAY_BUFFER,
-          new Float32Array([-1, 1, 1, 1, -1, -1, 1, -1]), // 4 vertices (4 times x,y)
-          gl.STATIC_DRAW // we don't update the vertices after creating the buffer (we do destroy the program per keystroke though, but not per rAF)
-        )
+        // gl.useProgram(program)
+        // gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer()) // set up the dummy vertex shader's buffer
+        // gl.bufferData(
+        //   gl.ARRAY_BUFFER,
+        //   new Float32Array([-1, 1, 1, 1, -1, -1, 1, -1]), // 4 vertices (4 times x,y)
+        //   gl.STATIC_DRAW // we don't update the vertices after creating the buffer (we do destroy the program per keystroke though, but not per rAF)
+        // )
         const aPosition = gl.getAttribLocation(program, "a_position")
         gl.vertexAttribPointer(
           aPosition,
@@ -287,8 +309,15 @@ void main() {
       }
     }
 
+    gl.bindFramebuffer(gl.FRAMEBUFFER, frameBuffer)
+
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, colorTexture, 0) // use colorTexture framebuffer's color attachment
+
+    gl.useProgram(program) // switch to the right program
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4) // actually draw the pixels
+    gl.readPixels(0, 0, canvasRetinaSizeX, canvasRetinaSizeY, gl.RGBA, gl.UNSIGNED_BYTE, reusedPixelsData) // read back the drawn pixels
+
     // TODO: run the last successful shader even upon first load
-    gl.viewport(0, 0, canvasRetinaSizeX, canvasRetinaSizeY) // needs to come after canvas width/height change, otherwise flash
     let uRes = gl.getUniformLocation(program, "iResolution")
     let uTime = gl.getUniformLocation(program, "iTime")
     let uMouse = gl.getUniformLocation(program, "iMouse")
@@ -296,7 +325,15 @@ void main() {
     gl.uniform3f(uRes, canvasRetinaSizeX, canvasRetinaSizeY, 1.0)
     gl.uniform1f(uTime, now * 0.001)
     gl.uniform4f(uMouse, iMouseX, iMouseY, inputs.pointerState === 'up' ? 0 : 1, inputs.pointerState === 'firstDown' ? 1 : 0)
+
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
+
+    const ctx = canvasNode.getContext("2d")!
+    const imageData = ctx.createImageData(canvasRetinaSizeX, canvasRetinaSizeY)
+    imageData.data.set(reusedPixelsData)
+    ctx.putImageData(imageData, 0, 0)
+
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null)
   }
 
   if (editors.some(e => e.changed)) {
